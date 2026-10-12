@@ -530,6 +530,8 @@ app.post('/send-command', (req, res) => {
     try {
         if (isAppLinkCommand) {
             remote.sendAppLink(appLinkMap[keycode]);
+        } else if (keycode === 'Power') {
+            remote.sendPower();
         } else {
             remote.sendKey(keyMap[keycode], RemoteDirection.SHORT);
         }
