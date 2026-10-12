@@ -238,7 +238,11 @@
 
         #connection-panel[hidden],
         #pairing-form[hidden],
-        #connection-message[hidden] {
+        #connection-message[hidden],
+        #device-selection[hidden],
+        #device-toggle[hidden],
+        #reconnect-button[hidden],
+        #reset-pairing-button[hidden] {
             display: none;
         }
 
@@ -303,8 +307,54 @@
         }
 
         #backend-settings button:disabled,
-        #pairing-form button:disabled {
+        #pairing-form button:disabled,
+        #device-selection button:disabled,
+        #device-selection select:disabled {
             opacity: 0.6;
+        }
+
+        #device-selection {
+            margin-top: 16px;
+        }
+
+        #device-selection button,
+        #device-selection select {
+            width: 100%;
+            margin-top: 10px;
+            padding: 12px;
+            border: 0;
+            border-radius: 10px;
+            background: #2563eb;
+            color: white;
+            font-weight: 700;
+        }
+
+        #device-selection select {
+            border: 1px solid #555;
+            background: #111827;
+            text-align: left;
+        }
+
+        #device-selection .secondary-action {
+            background: #374151;
+        }
+
+        #device-selection .warning-action {
+            background: #991b1b;
+        }
+
+        #device-toggle {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            z-index: 1050;
+            padding: 10px 14px;
+            border: 1px solid #4b5563;
+            border-radius: 999px;
+            background: #1e1e1e;
+            color: white;
+            font-weight: 700;
+            box-shadow: 0 5px 16px rgba(0, 0, 0, 0.4);
         }
 
         #connection-error {
@@ -327,6 +377,13 @@
                        autocomplete="url" placeholder="https://nome-do-pc.tailnet.ts.net">
                 <button id="backend-submit" type="submit">Conectar ao servidor</button>
             </form>
+            <div id="device-selection" hidden>
+                <button id="scan-devices-button" type="button">Buscar TVs na rede</button>
+                <select id="device-list" aria-label="TVs encontradas" hidden></select>
+                <button id="select-device-button" type="button" hidden>Conectar à TV selecionada</button>
+                <button id="reconnect-button" class="secondary-action" type="button" hidden>Tentar reconectar agora</button>
+                <button id="reset-pairing-button" class="warning-action" type="button" hidden>Refazer pareamento</button>
+            </div>
             <form id="pairing-form" hidden>
                 <p>Digite o código exibido na tela da TV:</p>
                 <input id="pairing-pin" name="pin" type="text" inputmode="text"
@@ -337,6 +394,7 @@
             <p id="connection-error" role="alert"></p>
         </section>
     </div>
+    <button id="device-toggle" type="button" hidden>TV</button>
 
     <div class="remote-body">
         
@@ -482,8 +540,20 @@
         const backendSettings = document.getElementById('backend-settings');
         const backendUrlInput = document.getElementById('backend-url');
         const backendSubmit = document.getElementById('backend-submit');
+        const deviceSelection = document.getElementById('device-selection');
+        const scanDevicesButton = document.getElementById('scan-devices-button');
+        const deviceList = document.getElementById('device-list');
+        const selectDeviceButton = document.getElementById('select-device-button');
+        const reconnectButton = document.getElementById('reconnect-button');
+        const resetPairingButton = document.getElementById('reset-pairing-button');
+        const deviceToggle = document.getElementById('device-toggle');
         const backendStorageKey = 'tcl-remote-backend-url';
         const isGitHubPages = location.hostname === 'github.io' || location.hostname.endsWith('.github.io');
+        let statusPanelOpen = true;
+        let remoteIsConnected = false;
+        let discoveryStarted = false;
+        let deviceScanInProgress = false;
+        let actionError = '';
 
         function getBackendBaseUrl() {
             const savedUrl = localStorage.getItem(backendStorageKey);
@@ -497,13 +567,127 @@
             connectionPanel.hidden = false;
             connectionMessage.hidden = false;
             pairingForm.hidden = true;
+            deviceSelection.hidden = true;
             backendSettings.hidden = false;
             connectionMessage.textContent = message;
         }
 
+        deviceToggle.addEventListener('click', () => {
+            statusPanelOpen = true;
+            connectionPanel.hidden = false;
+        });
+
+        scanDevicesButton.addEventListener('click', async () => {
+            scanDevicesButton.disabled = true;
+            scanDevicesButton.textContent = 'Procurando TVs...';
+            deviceScanInProgress = true;
+            actionError = '';
+            connectionError.textContent = '';
+            deviceList.hidden = true;
+            selectDeviceButton.hidden = true;
+
+            try {
+                const response = await fetch(`${getBackendBaseUrl()}/api/devices/scan`, { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || `Busca falhou (${response.status})`);
+                }
+                deviceList.replaceChildren();
+                for (const [index, device] of result.devices.entries()) {
+                    const option = document.createElement('option');
+                    option.value = device.ip;
+                    option.textContent = result.devices.length === 1
+                        ? 'Android TV encontrada'
+                        : `Android TV ${index + 1} (${device.ip})`;
+                    deviceList.append(option);
+                }
+                if (result.devices.length === 0) {
+                    actionError = 'Nenhuma TV encontrada. Confirme que a TV e o PC estão na mesma rede Wi-Fi.';
+                } else {
+                    actionError = '';
+                    deviceList.hidden = false;
+                    selectDeviceButton.hidden = false;
+                }
+            } catch (error) {
+                actionError = error.message;
+            } finally {
+                deviceScanInProgress = false;
+                connectionError.textContent = actionError;
+                scanDevicesButton.disabled = false;
+                scanDevicesButton.textContent = 'Buscar TVs na rede';
+            }
+        });
+
+        selectDeviceButton.addEventListener('click', async () => {
+            selectDeviceButton.disabled = true;
+            actionError = '';
+            connectionError.textContent = '';
+            try {
+                const response = await fetch(`${getBackendBaseUrl()}/api/devices/select`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip: deviceList.value })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || `Não foi possível selecionar a TV (${response.status})`);
+                }
+                connectionMessage.hidden = false;
+                connectionMessage.textContent = result.message;
+            } catch (error) {
+                actionError = error.message;
+            } finally {
+                connectionError.textContent = actionError;
+                selectDeviceButton.disabled = false;
+                updateConnectionStatus();
+            }
+        });
+
+        reconnectButton.addEventListener('click', async () => {
+            reconnectButton.disabled = true;
+            actionError = '';
+            connectionError.textContent = '';
+            try {
+                const response = await fetch(`${getBackendBaseUrl()}/api/reconnect`, { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || `Reconexão falhou (${response.status})`);
+                }
+            } catch (error) {
+                actionError = error.message;
+            } finally {
+                connectionError.textContent = actionError;
+                reconnectButton.disabled = false;
+                updateConnectionStatus();
+            }
+        });
+
+        resetPairingButton.addEventListener('click', async () => {
+            if (!confirm('Isso apagará o pareamento salvo e solicitará um novo código na TV. Continuar?')) {
+                return;
+            }
+            resetPairingButton.disabled = true;
+            actionError = '';
+            connectionError.textContent = '';
+            try {
+                const response = await fetch(`${getBackendBaseUrl()}/api/pairing/reset`, { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || `Não foi possível refazer o pareamento (${response.status})`);
+                }
+            } catch (error) {
+                actionError = error.message;
+            } finally {
+                connectionError.textContent = actionError;
+                resetPairingButton.disabled = false;
+                updateConnectionStatus();
+            }
+        });
+
         backendSettings.addEventListener('submit', async (event) => {
             event.preventDefault();
             backendSubmit.disabled = true;
+            actionError = '';
             connectionError.textContent = '';
 
             try {
@@ -514,7 +698,8 @@
                 localStorage.setItem(backendStorageKey, parsedUrl.origin);
                 await updateConnectionStatus();
             } catch (error) {
-                connectionError.textContent = error.message;
+                actionError = error.message;
+                connectionError.textContent = actionError;
             } finally {
                 backendSubmit.disabled = false;
             }
@@ -534,13 +719,55 @@
                 }
 
                 const status = await response.json();
-                connectionPanel.hidden = status.remoteReady;
+                if (status.remoteReady && !remoteIsConnected) {
+                    statusPanelOpen = false;
+                }
+                remoteIsConnected = status.remoteReady;
                 backendSettings.hidden = true;
                 pairingForm.hidden = !status.pairingRequired;
+                deviceToggle.hidden = !status.tvIp;
+                deviceToggle.textContent = status.remoteReady ? 'TV conectada' : 'Conexão da TV';
+                deviceSelection.hidden = !status.tvIp && !status.pairingRequired;
+                reconnectButton.hidden = status.connectionStatus !== 'reconnecting';
+                resetPairingButton.hidden = !status.tvIp || status.pairingRequired;
                 connectionMessage.hidden = status.pairingRequired;
-                connectionMessage.textContent = status.error
-                    ? `Não foi possível conectar: ${status.error}`
-                    : 'Conectando à TV. Aguarde...';
+
+                if (status.pairingRequired) {
+                    connectionMessage.textContent = 'Digite o código mostrado na TV:';
+                } else if (status.remoteReady) {
+                    connectionMessage.hidden = true;
+                } else if (!status.tvIp) {
+                    connectionMessage.hidden = false;
+                    connectionMessage.textContent = deviceScanInProgress
+                        ? 'Procurando TVs na rede do PC...'
+                        : deviceList.options.length > 0
+                            ? 'Selecione sua TV para conectar.'
+                            : 'Busque TVs na mesma rede do PC.';
+                    deviceSelection.hidden = false;
+                    if (!discoveryStarted) {
+                        discoveryStarted = true;
+                        scanDevicesButton.click();
+                    }
+                } else if (status.connectionStatus === 'reconnecting') {
+                    connectionMessage.hidden = false;
+                    connectionMessage.textContent = `Conexão interrompida. Tentando reconectar automaticamente (tentativa ${status.reconnectAttempt})...`;
+                } else {
+                    connectionMessage.hidden = false;
+                    connectionMessage.textContent = 'Conectando à TV...';
+                }
+
+                connectionPanel.hidden = status.remoteReady && !statusPanelOpen;
+                if (status.remoteReady && statusPanelOpen) {
+                    connectionPanel.hidden = false;
+                    connectionMessage.hidden = false;
+                    connectionMessage.textContent = status.error || 'Conectado à TV.';
+                    deviceSelection.hidden = false;
+                }
+                if (status.error) {
+                    connectionError.textContent = status.error;
+                } else {
+                    connectionError.textContent = actionError;
+                }
 
                 if (status.pairingRequired) {
                     connectionError.textContent = '';
@@ -554,9 +781,17 @@
             }
         }
 
+        connectionPanel.addEventListener('click', (event) => {
+            if (event.target === connectionPanel && remoteIsConnected) {
+                statusPanelOpen = false;
+                connectionPanel.hidden = true;
+            }
+        });
+
         pairingForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             pairingSubmit.disabled = true;
+            actionError = '';
             connectionError.textContent = '';
 
             try {
@@ -576,8 +811,12 @@
                 connectionMessage.textContent = result.message;
                 pairingPin.value = '';
             } catch (error) {
-                connectionError.textContent = error.message;
+                actionError = error.message;
+                connectionError.textContent = actionError;
             } finally {
+                if (actionError) {
+                    connectionError.textContent = actionError;
+                }
                 pairingSubmit.disabled = false;
                 updateConnectionStatus();
             }

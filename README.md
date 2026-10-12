@@ -13,17 +13,17 @@ O GitHub Pages não executa o backend. Para acessar o backend com segurança sem
 2. No GitHub, abra **Settings > Pages**, escolha **Deploy from a branch**, selecione `main` e a pasta `/ (root)`, e salve.
 3. O GitHub Pages publica a partir da branch `main`. Aguarde o primeiro build e acesse `https://operacaoindustria-boop.github.io/controleremotopw/`.
 
-## Configurar acesso privado ao backend
+## Conectar à TV
 
-1. Instale e conecte Tailscale no PC que alcança a TV e no celular. Ambos devem entrar no mesmo tailnet.
-2. Inicie o servidor pela tarefa **Iniciar controle remoto TCL** no VS Code.
-3. Quando solicitado, informe a origem `https://operacaoindustria-boop.github.io`. Deixe vazio para uso local sem o Pages.
-4. Informe o IP local da TV quando a tarefa solicitar. O endereço fica na configuração local da tarefa e não deve ser incluído no repositório público.
-5. No PC, execute `tailscale serve --bg 3000` em um terminal. O Tailscale mostrará um endereço HTTPS do tipo `https://nome-do-pc.nome-da-rede.ts.net`.
-6. No celular, abra o endereço do GitHub Pages, informe o endereço HTTPS do Tailscale Serve e conecte-se.
-7. Quando a TV solicitar o PIN, digite-o na interface e confirme.
+1. O PC que executa o backend precisa estar ligado na mesma rede da TV. Inicie o servidor pela tarefa **Iniciar controle remoto TCL** no VS Code; não é necessário informar o IP da TV.
+2. Para usar a página do GitHub Pages, instale e conecte Tailscale no PC e no celular, colocando ambos no mesmo tailnet.
+3. No PC, execute `tailscale serve --bg 3000`. O Tailscale mostrará um endereço HTTPS do tipo `https://nome-do-pc.nome-da-rede.ts.net`.
+4. Abra o GitHub Pages no celular e informe esse endereço do Tailscale Serve uma única vez. A interface buscará TVs na rede do PC; escolha a sua na lista.
+5. No primeiro pareamento, digite na interface o código solicitado pela TV. O backend salva a identidade do pareamento localmente para reconectar sem pedir o código em quedas futuras.
 
-O PC precisa permanecer ligado, com o servidor Node.js e Tailscale ativos. O celular precisa estar conectado ao mesmo tailnet. Não use Tailscale Funnel nem encaminhamento público da porta 3000: o backend não implementa autenticação de utilizadores.
+Também é possível acessar a interface servida pelo próprio backend em `http://IP-DO-PC:3000` quando o celular está na mesma rede Wi-Fi. Nesse caso, o navegador já se conecta ao backend local e não é necessário configurar o Tailscale para uso dentro de casa.
+
+O PC precisa permanecer ligado e com o servidor Node.js ativo. Para acesso pelo GitHub Pages, Tailscale também deve permanecer conectado no PC e no celular. Não use Tailscale Funnel nem encaminhamento público da porta 3000: o backend não implementa autenticação de utilizadores.
 
 ## Desenvolvimento local
 

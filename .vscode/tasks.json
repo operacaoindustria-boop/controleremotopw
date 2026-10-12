@@ -10,8 +10,7 @@
 			],
 			"options": {
 				"env": {
-					"REMOTE_UI_ORIGINS": "${input:githubPagesOrigin}",
-					"TV_IP": "${input:tvIp}"
+					"REMOTE_UI_ORIGINS": "${input:githubPagesOrigin}"
 				}
 			},
 			"isBackground": true,
@@ -23,7 +22,7 @@
 				},
 				"background": {
 					"activeOnStart": true,
-					"beginsPattern": "A ligar à TV no IP",
+					"beginsPattern": "Iniciando backend do controle remoto",
 					"endsPattern": "Servidor a correr na porta 3000"
 				}
 			}
@@ -34,13 +33,7 @@
 			"id": "githubPagesOrigin",
 			"type": "promptString",
 			"description": "Origem do GitHub Pages autorizada a controlar a TV (ex.: https://usuario.github.io). Deixe vazio se ainda nao publicou.",
-			"default": ""
-		},
-		{
-			"id": "tvIp",
-			"type": "promptString",
-			"description": "Endereco IP local da TV (nao publique este valor no repositorio).",
-			"default": ""
+			"default": "https://operacaoindustria-boop.github.io"
 		}
 	]
 }

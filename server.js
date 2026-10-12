@@ -1,10 +1,16 @@
 const express = require('express');
 const cors = require('cors');
 const { AndroidRemote, RemoteKeyCode, RemoteDirection } = require('androidtv-remote');
+const fs = require('fs');
+const net = require('net');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
+const PORT = 3000;
+const DATA_DIR = path.join(os.homedir(), '.tcl-remote');
+const SAVED_DEVICE_FILE = path.join(DATA_DIR, 'selected-device.json');
 const configuredOrigins = new Set(
     (process.env.REMOTE_UI_ORIGINS || '')
         .split(',')
@@ -18,58 +24,337 @@ app.use(cors({
         if (!origin || isLocalDevelopmentOrigin || configuredOrigins.has(origin)) {
             return callback(null, true);
         }
-        return callback(new Error(`Interface não autorizada para acessar o controle: ${origin}`));
+        return callback(null, false);
     }
 }));
 app.use(express.json());
 
-const TV_IP = process.env.TV_IP;
-const PORT = 3000;
+function readJsonFile(filePath) {
+    try {
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            return null;
+        }
+        throw error;
+    }
+}
+
+function getCertificateFile(host) {
+    const hostId = crypto.createHash('sha256').update(host).digest('hex').slice(0, 16);
+    return path.join(DATA_DIR, `certificate-${hostId}.json`);
+}
+
+function loadCertificate(host) {
+    const savedCertificate = readJsonFile(getCertificateFile(host));
+    if (!savedCertificate) {
+        return null;
+    }
+    if (typeof savedCertificate.key !== 'string' || typeof savedCertificate.cert !== 'string') {
+        throw new Error(`O certificado salvo para a TV ${host} está inválido.`);
+    }
+    return savedCertificate;
+}
+
+function saveJsonFile(filePath, value) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const temporaryPath = `${filePath}.${process.pid}.tmp`;
+    fs.writeFileSync(temporaryPath, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(temporaryPath, filePath);
+}
+
+function saveCertificate(host, certificate) {
+    if (!certificate || typeof certificate.key !== 'string' || typeof certificate.cert !== 'string') {
+        throw new Error('A biblioteca não retornou um certificado válido para persistência.');
+    }
+    saveJsonFile(getCertificateFile(host), certificate);
+}
+
+const savedDevice = readJsonFile(SAVED_DEVICE_FILE);
+const configuredTvIp = process.env.TV_IP || null;
+let tvIp = configuredTvIp || savedDevice?.ip || null;
+if (tvIp && net.isIP(tvIp) !== 4) {
+    throw new Error('O endereço IPv4 da TV salvo ou configurado é inválido.');
+}
+
 let remote = null;
 let remoteReady = false;
 let pairingRequired = false;
 let connectionError = null;
+let connectionStatus = tvIp ? 'connecting' : 'selecting';
+let reconnectAttempt = 0;
+let reconnectTimer = null;
+let remoteGeneration = 0;
+let reconnectInProgress = false;
+let lastScanDevices = new Map();
+let scanInProgress = null;
+const watchedRemoteSockets = new WeakSet();
 
-async function initRemote() {
-    if (!TV_IP) {
-        throw new Error("Configure a variável de ambiente TV_IP com o endereço da TV antes de iniciar o servidor.");
+function stopCurrentRemote() {
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+    remoteGeneration += 1;
+    reconnectInProgress = false;
+
+    const previousRemote = remote;
+    remote = null;
+    previousRemote?.removeAllListeners();
+    if (previousRemote?.pairingManager?.client) {
+        previousRemote.pairingManager.client.removeAllListeners('close');
+        previousRemote.pairingManager.client.destroy();
+    }
+    if (previousRemote?.remoteManager?.client) {
+        previousRemote.remoteManager.client.removeAllListeners('close');
+        previousRemote.remoteManager.stop();
+    }
+}
+
+function scheduleReconnect(reason) {
+    if (!tvIp || !remote || pairingRequired || reconnectTimer || reconnectInProgress) {
+        return;
     }
 
-    console.log(`\n🔄 A ligar à TV no IP: ${TV_IP}...`);
-    
-    let options = { name: 'Controle-Web' };
-    remote = new AndroidRemote(TV_IP, options);
-    
-    remote.on('secret', () => {
-         pairingRequired = true;
-         connectionError = null;
-         console.log("\n⚠️ PIN exibido na TV. Digite-o na página aberta pelo celular.");
-    });
+    remoteReady = false;
+    connectionStatus = 'reconnecting';
+    connectionError = reason || null;
+    reconnectAttempt += 1;
 
-    remote.on('ready', () => {
-         remoteReady = true;
-         pairingRequired = false;
-         connectionError = null;
-         console.log("\n✅ SUCESSO! A TV está emparelhada e pronta para receber comandos!");
-    });
+    const delay = Math.min(1000 * (2 ** Math.min(reconnectAttempt - 1, 5)), 30000);
+    console.warn(`🔄 Reconexão com a TV em ${Math.ceil(delay / 1000)}s (tentativa ${reconnectAttempt}).`);
+    reconnectTimer = setTimeout(async () => {
+        reconnectTimer = null;
+        const generation = remoteGeneration;
+        const activeRemote = remote;
+        if (!activeRemote || generation !== remoteGeneration || pairingRequired) {
+            return;
+        }
 
-    remote.on('unpaired', () => {
-         remoteReady = false;
-         connectionError = "A TV encerrou o emparelhamento. Reinicie o servidor para emparelhar novamente.";
-         console.error("❌ A TV encerrou o emparelhamento. Emparelhe novamente para enviar comandos.");
-    });
+        reconnectInProgress = true;
+        try {
+            await activeRemote.start();
+        } catch (error) {
+            connectionError = error.message;
+            console.error('❌ Tentativa de reconexão falhou:', error.message);
+        } finally {
+            watchRemoteSocket(activeRemote, generation);
+            reconnectInProgress = false;
+        }
 
-    remote.on('error', (erro) => {
-         remoteReady = false;
-         connectionError = erro.message;
-         console.error("❌ Erro na conexão com a TV:", erro.message);
-    });
+        if (generation === remoteGeneration && !remoteReady && !pairingRequired) {
+            scheduleReconnect(connectionError);
+        }
+    }, delay);
+}
 
+function watchRemoteSocket(activeRemote, generation) {
+    const socket = activeRemote.remoteManager?.client;
+    if (!socket || watchedRemoteSockets.has(socket)) {
+        return;
+    }
+    watchedRemoteSockets.add(socket);
+
+    socket.on('error', (error) => {
+        if (generation === remoteGeneration && activeRemote.remoteManager?.client === socket) {
+            connectionError = error.message;
+        }
+    });
+    socket.on('close', () => {
+        if (generation !== remoteGeneration || activeRemote.remoteManager?.client !== socket) {
+            return;
+        }
+        remoteReady = false;
+        if (!pairingRequired) {
+            scheduleReconnect(connectionError || 'Conexão perdida. Tentando reconectar automaticamente...');
+        }
+    });
+}
+
+async function initRemote(host, { forgetCertificate = false } = {}) {
+    stopCurrentRemote();
+    tvIp = host;
+    remoteReady = false;
+    pairingRequired = false;
+    connectionError = null;
+    reconnectAttempt = 0;
+    connectionStatus = 'connecting';
+    let activeRemote;
+    let generation;
     try {
-        await remote.start();
+        saveJsonFile(SAVED_DEVICE_FILE, { ip: host });
+        const certificate = forgetCertificate ? null : loadCertificate(host);
+        activeRemote = new AndroidRemote(host, {
+            name: 'Controle-Web',
+            ...(certificate ? { cert: certificate } : {})
+        });
+        generation = remoteGeneration;
+        remote = activeRemote;
     } catch (error) {
-        console.error("❌ Erro ao tentar ligar:", error.message);
+        connectionStatus = 'error';
+        connectionError = error.message;
+        console.error(`❌ Não foi possível preparar a conexão com ${host}:`, error);
+        return;
     }
+
+    console.log(`\n🔄 Conectando à TV em ${host}...`);
+
+    activeRemote.on('secret', () => {
+        if (generation !== remoteGeneration) {
+            return;
+        }
+        pairingRequired = true;
+        remoteReady = false;
+        connectionStatus = 'pairing';
+        connectionError = null;
+        console.log('⚠️ A TV solicitou o PIN. Digite-o na interface do controle.');
+    });
+
+    activeRemote.on('ready', () => {
+        if (generation !== remoteGeneration) {
+            return;
+        }
+        watchRemoteSocket(activeRemote, generation);
+        let persistenceError = null;
+        try {
+            saveCertificate(host, activeRemote.getCertificate());
+        } catch (error) {
+            persistenceError = `Conectado, mas não foi possível salvar a identidade de pareamento: ${error.message}`;
+            console.error(`❌ ${persistenceError}`);
+        }
+        remoteReady = true;
+        pairingRequired = false;
+        connectionStatus = 'connected';
+        connectionError = persistenceError;
+        reconnectAttempt = 0;
+        reconnectInProgress = false;
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+        console.log(`✅ TV em ${host} conectada e pronta.`);
+    });
+
+    activeRemote.on('unpaired', () => {
+        if (generation !== remoteGeneration) {
+            return;
+        }
+        console.warn('⚠️ A conexão com a TV caiu; vou tentar reconectar usando o pareamento salvo.');
+        scheduleReconnect('Reconectando automaticamente à TV...');
+    });
+
+    activeRemote.on('error', (error) => {
+        if (generation !== remoteGeneration) {
+            return;
+        }
+        const message = error?.message
+            || (error?.error ? String(error.error) : 'A TV reportou um erro de conexão.');
+        console.error('❌ Erro reportado pela TV:', message);
+        connectionError = message;
+    });
+
+    reconnectInProgress = true;
+    try {
+        await activeRemote.start();
+    } catch (error) {
+        if (generation === remoteGeneration) {
+            connectionError = error.message;
+        }
+    } finally {
+        watchRemoteSocket(activeRemote, generation);
+        reconnectInProgress = false;
+    }
+    if (generation === remoteGeneration && !remoteReady && !pairingRequired) {
+        scheduleReconnect(connectionError);
+    }
+}
+
+function ipToInteger(ip) {
+    return ip.split('.').reduce((value, octet) => ((value << 8) | Number(octet)) >>> 0, 0);
+}
+
+function integerToIp(value) {
+    return [24, 16, 8, 0].map((shift) => (value >>> shift) & 255).join('.');
+}
+
+function getLocalSubnetHosts() {
+    const hosts = new Set();
+    const interfaces = Object.values(os.networkInterfaces()).flat();
+
+    for (const networkInterface of interfaces) {
+        if (!networkInterface || networkInterface.internal || !['IPv4', 4].includes(networkInterface.family) || !networkInterface.netmask) {
+            continue;
+        }
+
+        const address = ipToInteger(networkInterface.address);
+        const mask = ipToInteger(networkInterface.netmask);
+        const network = (address & mask) >>> 0;
+        const broadcast = (network | (~mask >>> 0)) >>> 0;
+        const hostCount = broadcast - network - 1;
+
+        if (hostCount < 1 || hostCount > 1022) {
+            continue;
+        }
+
+        for (let candidate = network + 1; candidate < broadcast; candidate += 1) {
+            const ip = integerToIp(candidate);
+            if (ip !== networkInterface.address) {
+                hosts.add(ip);
+            }
+        }
+    }
+
+    return [...hosts];
+}
+
+function probePort(host, port, timeoutMs = 350) {
+    return new Promise((resolve) => {
+        const socket = net.createConnection({ host, port });
+        let settled = false;
+        const finish = (isOpen) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            socket.destroy();
+            resolve(isOpen);
+        };
+        socket.setTimeout(timeoutMs);
+        socket.once('connect', () => finish(true));
+        socket.once('timeout', () => finish(false));
+        socket.once('error', () => finish(false));
+    });
+}
+
+async function scanForAndroidTvs() {
+    const hosts = getLocalSubnetHosts();
+    if (hosts.length === 0) {
+        throw new Error('Não encontrei uma rede local IPv4 para procurar TVs.');
+    }
+
+    const devices = [];
+    let nextHost = 0;
+    async function scanWorker() {
+        while (nextHost < hosts.length) {
+            const host = hosts[nextHost];
+            nextHost += 1;
+            const [pairingPortOpen, remotePortOpen] = await Promise.all([
+                probePort(host, 6467),
+                probePort(host, 6466)
+            ]);
+            if (pairingPortOpen || remotePortOpen) {
+                devices.push({
+                    ip: host,
+                    name: `Android TV (${host})`,
+                    pairingPortOpen,
+                    remotePortOpen
+                });
+            }
+        }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(hosts.length, 64) }, () => scanWorker()));
+    return devices.sort((first, second) => first.ip.localeCompare(second.ip, undefined, { numeric: true }));
 }
 
 const keyMap = {
@@ -111,7 +396,80 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/status', (req, res) => {
-    res.json({ remoteReady, pairingRequired, error: connectionError });
+    res.json({
+        remoteReady,
+        pairingRequired,
+        tvIp,
+        connectionStatus,
+        reconnectAttempt,
+        error: connectionError
+    });
+});
+
+app.post('/api/devices/scan', async (req, res) => {
+    try {
+        if (!scanInProgress) {
+            scanInProgress = scanForAndroidTvs().finally(() => {
+                scanInProgress = null;
+            });
+        }
+        const devices = await scanInProgress;
+        lastScanDevices = new Map(devices.map((device) => [device.ip, device]));
+        return res.json({ devices });
+    } catch (error) {
+        console.error('❌ Erro ao procurar TVs na rede:', error);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/devices/select', (req, res) => {
+    const { ip } = req.body || {};
+    if (typeof ip !== 'string' || net.isIP(ip) !== 4 || !lastScanDevices.has(ip)) {
+        return res.status(400).json({ error: 'Escolha uma TV encontrada na busca da rede.' });
+    }
+
+    initRemote(ip);
+    return res.status(202).json({ success: true, message: 'Conectando à TV selecionada.' });
+});
+
+app.post('/api/reconnect', (req, res) => {
+    if (!tvIp) {
+        return res.status(409).json({ error: 'Procure e selecione uma TV antes de reconectar.' });
+    }
+    if (remoteReady) {
+        return res.status(409).json({ error: 'A TV já está conectada.' });
+    }
+    if (pairingRequired) {
+        return res.status(409).json({ error: 'A TV está aguardando o código de pareamento.' });
+    }
+
+    if (!remote) {
+        initRemote(tvIp);
+    } else {
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+        reconnectAttempt = 0;
+        reconnectInProgress = false;
+        scheduleReconnect('Reconexão solicitada.');
+    }
+    return res.json({ success: true, message: 'Reconexão iniciada.' });
+});
+
+app.post('/api/pairing/reset', (req, res) => {
+    if (!tvIp) {
+        return res.status(409).json({ error: 'Nenhuma TV está selecionada.' });
+    }
+
+    try {
+        fs.rmSync(getCertificateFile(tvIp), { force: true });
+        initRemote(tvIp, { forgetCertificate: true });
+        return res.json({ success: true, message: 'Iniciando um novo pareamento com a TV.' });
+    } catch (error) {
+        console.error('❌ Erro ao iniciar novo pareamento:', error);
+        return res.status(500).json({ error: error.message });
+    }
 });
 
 app.post('/api/pair-code', (req, res) => {
@@ -127,18 +485,19 @@ app.post('/api/pair-code', (req, res) => {
 
     try {
         const accepted = remote.sendCode(pin.toUpperCase());
-        pairingRequired = false;
 
         if (!accepted) {
             connectionError = "Código incorreto. Confira o PIN na TV e tente novamente.";
             setTimeout(() => {
                 if (!remoteReady) {
-                    initRemote();
+                    initRemote(tvIp);
                 }
             }, 1000);
             return res.status(400).json({ error: connectionError });
         }
 
+        pairingRequired = false;
+        connectionStatus = 'connecting';
         connectionError = null;
         console.log("🔐 PIN recebido pela interface do celular.");
         return res.json({ success: true, message: "PIN enviado. Aguardando a conexão com a TV." });
@@ -178,11 +537,17 @@ app.post('/send-command', (req, res) => {
     } catch (error) {
         console.error(`❌ Erro ao enviar "${keycode}" para a TV:`, error);
         remoteReady = false;
+        scheduleReconnect(error.message);
         return res.status(502).json({ error: "Falha ao enviar o comando para a TV." });
     }
 });
 
-initRemote();
+console.log('Iniciando backend do controle remoto...');
+if (tvIp) {
+    initRemote(tvIp);
+} else {
+    console.log('📺 Nenhuma TV selecionada. Use a interface para procurar dispositivos na rede.');
+}
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Servidor a correr na porta ${PORT}`);
