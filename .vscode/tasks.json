@@ -1,0 +1,46 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Iniciar controle remoto TCL",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"server.js"
+			],
+			"options": {
+				"env": {
+					"REMOTE_UI_ORIGINS": "${input:githubPagesOrigin}",
+					"TV_IP": "${input:tvIp}"
+				}
+			},
+			"isBackground": true,
+			"problemMatcher": {
+				"owner": "custom",
+				"pattern": {
+					"regexp": "^$",
+					"message": 0
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "A ligar à TV no IP",
+					"endsPattern": "Servidor a correr na porta 3000"
+				}
+			}
+		}
+	],
+	"inputs": [
+		{
+			"id": "githubPagesOrigin",
+			"type": "promptString",
+			"description": "Origem do GitHub Pages autorizada a controlar a TV (ex.: https://usuario.github.io). Deixe vazio se ainda nao publicou.",
+			"default": ""
+		},
+		{
+			"id": "tvIp",
+			"type": "promptString",
+			"description": "Endereco IP local da TV (nao publique este valor no repositorio).",
+			"default": ""
+		}
+	]
+}

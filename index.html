@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Controle Remoto TV</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #1a202c; /* Fundo escuro para contrastar */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation; /* Melhora a resposta ao toque no celular */
+        }
+
+        /* O corpo do controle */
+        .remote-body {
+            background-color: #1e1e1e;
+            border-radius: 40px;
+            width: 320px;
+            padding: 30px 20px;
+            box-shadow: 
+                inset 0px 0px 10px rgba(255,255,255,0.05), /* Brilho interno sutil */
+                0px 20px 50px rgba(0,0,0,0.8), /* Sombra externa profunda */
+                0px 5px 15px rgba(0,0,0,0.5); /* Sombra mais próxima */
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Botões circulares genéricos */
+        .btn-circle {
+            background-color: #2a2a2a;
+            color: #ccc;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.2rem;
+            cursor: pointer;
+            box-shadow: 0px 4px 6px rgba(0,0,0,0.3), inset 0px 1px 2px rgba(255,255,255,0.1);
+            transition: all 0.1s ease;
+            position: relative;
+        }
+
+        .btn-circle:active {
+            transform: translateY(2px);
+            box-shadow: 0px 2px 3px rgba(0,0,0,0.3), inset 0px 2px 4px rgba(0,0,0,0.4);
+            background-color: #222;
+        }
+
+        /* Botões ovais/pílula */
+        .btn-pill {
+            background-color: #2a2a2a;
+            color: #ccc;
+            border: none;
+            border-radius: 25px;
+            width: 100%;
+            height: 50px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            font-size: 1.2rem;
+            cursor: pointer;
+            box-shadow: 0px 4px 6px rgba(0,0,0,0.3), inset 0px 1px 2px rgba(255,255,255,0.1);
+            transition: all 0.1s ease;
+        }
+        
+        .btn-pill-vertical {
+            background-color: #2a2a2a;
+            color: #ccc;
+            border: none;
+            border-radius: 25px;
+            width: 50px;
+            height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            align-items: center;
+            font-size: 1.2rem;
+            box-shadow: 0px 4px 6px rgba(0,0,0,0.3), inset 0px 1px 2px rgba(255,255,255,0.1);
+        }
+
+        .btn-pill-vertical button {
+            background: none;
+            border: none;
+            color: inherit;
+            font-size: 1.2rem;
+            width: 100%;
+            height: 50%;
+            cursor: pointer;
+            transition: color 0.1s;
+        }
+        
+        .btn-pill-vertical button:active {
+             color: #fff;
+             background-color: rgba(0,0,0,0.2);
+             border-radius: 25px;
+        }
+
+        /* D-Pad (Controles Direcionais) */
+        .d-pad-container {
+            position: relative;
+            width: 220px;
+            height: 220px;
+            margin: 0 auto;
+            background-color: #444; /* Cor cinza mais clara do anel */
+            border-radius: 50%;
+            box-shadow: 0px 8px 15px rgba(0,0,0,0.4), inset 0px 2px 5px rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .d-pad-btn {
+            position: absolute;
+            background: transparent;
+            border: none;
+            color: #aaa;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: color 0.1s;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        
+        /* Ocultando ícones do D-Pad para parecer com o controle original que não tem setas impressas */
+        .d-pad-btn i {
+            display: none; 
+        }
+
+        .d-pad-btn:active {
+            color: #fff;
+            background-color: rgba(0,0,0,0.1);
+            border-radius: 50%;
+        }
+
+        .d-pad-up { top: 5px; }
+        .d-pad-right { right: 5px; }
+        .d-pad-down { bottom: 5px; }
+        .d-pad-left { left: 5px; }
+
+        .d-pad-center {
+            width: 80px;
+            height: 80px;
+            background-color: #1e1e1e; /* Botão central preto */
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            box-shadow: inset 0px 2px 5px rgba(0,0,0,0.5), 0px 2px 4px rgba(255,255,255,0.1);
+            z-index: 20;
+            transition: all 0.1s ease;
+        }
+
+        .d-pad-center:active {
+            transform: scale(0.95);
+            box-shadow: inset 0px 4px 8px rgba(0,0,0,0.7);
+        }
+
+        /* Botões de Atalho (Streaming) */
+        .streaming-btn {
+            background-color: white;
+            border: none;
+            border-radius: 20px;
+            height: 40px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 0 15px;
+            cursor: pointer;
+            box-shadow: 0px 2px 4px rgba(0,0,0,0.2);
+            transition: transform 0.1s ease;
+            width: 100%;
+        }
+
+        .streaming-btn:active {
+            transform: scale(0.97);
+        }
+
+        .streaming-logo {
+            height: 20px;
+            object-fit: contain;
+            max-width: 45%;
+        }
+        
+        .divider {
+            width: 1px;
+            height: 20px;
+            background-color: #ccc;
+        }
+
+        /* Cores Específicas */
+        .power-btn { color: #ff4444; }
+        .mic-btn { background-color: white; color: #333; }
+        .google-colors span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin: 1px;}
+        
+        /* Notificação */
+        #notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 255, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        #connection-panel {
+            position: fixed;
+            inset: 0;
+            z-index: 1100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            background: rgba(10, 14, 22, 0.92);
+            color: white;
+        }
+
+        #connection-panel[hidden],
+        #pairing-form[hidden],
+        #connection-message[hidden] {
+            display: none;
+        }
+
+        .connection-card {
+            width: min(100%, 360px);
+            padding: 28px 24px;
+            border: 1px solid #444;
+            border-radius: 24px;
+            background: #1e1e1e;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .connection-card h1 {
+            margin: 0 0 12px;
+            font-size: 1.35rem;
+            font-weight: 700;
+        }
+
+        .connection-card p {
+            margin: 0 0 18px;
+            color: #d1d5db;
+        }
+
+        #pairing-pin {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #555;
+            border-radius: 10px;
+            background: #111827;
+            color: white;
+            font-size: 1.25rem;
+            letter-spacing: 0.2em;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        #backend-settings {
+            margin: 16px 0;
+            text-align: left;
+        }
+
+        #backend-url {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #555;
+            border-radius: 10px;
+            background: #111827;
+            color: white;
+        }
+
+        #backend-settings button,
+        #pairing-form button {
+            width: 100%;
+            margin-top: 12px;
+            padding: 12px;
+            border: 0;
+            border-radius: 10px;
+            background: #2563eb;
+            color: white;
+            font-weight: 700;
+        }
+
+        #backend-settings button:disabled,
+        #pairing-form button:disabled {
+            opacity: 0.6;
+        }
+
+        #connection-error {
+            min-height: 1.25em;
+            margin-top: 12px !important;
+            color: #fca5a5 !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="notification">Comando enviado!</div>
+    <div id="connection-panel">
+        <section class="connection-card">
+            <h1>Conectar à TV</h1>
+            <p id="connection-message">Conectando ao servidor da TV...</p>
+            <form id="backend-settings" hidden>
+                <label for="backend-url">Endereço HTTPS do servidor Tailscale no PC:</label>
+                <input id="backend-url" name="backendUrl" type="url" inputmode="url"
+                       autocomplete="url" placeholder="https://nome-do-pc.tailnet.ts.net">
+                <button id="backend-submit" type="submit">Conectar ao servidor</button>
+            </form>
+            <form id="pairing-form" hidden>
+                <p>Digite o código exibido na tela da TV:</p>
+                <input id="pairing-pin" name="pin" type="text" inputmode="text"
+                       autocomplete="one-time-code" maxlength="6" pattern="[0-9A-Fa-f]{6}"
+                       aria-label="Código de emparelhamento da TV" required>
+                <button id="pairing-submit" type="submit">Confirmar conexão</button>
+            </form>
+            <p id="connection-error" role="alert"></p>
+        </section>
+    </div>
+
+    <div class="remote-body">
+        
+        <!-- Linha 1: Mudo, Microfone (LED mock), Power -->
+        <div class="flex justify-between items-center px-2">
+            <button class="btn-circle" onclick="sendCommand('Mute')" title="Mudo">
+                <i class="fa-solid fa-volume-xmark"></i>
+            </button>
+            <div class="w-2 h-2 rounded-full bg-gray-600" id="led-indicator"></div>
+            <button class="btn-circle power-btn" onclick="sendCommand('Power')" title="Ligar/Desligar">
+                <i class="fa-solid fa-power-off"></i>
+            </button>
+        </div>
+
+        <!-- Linha 2: Bookmark/Lista, Assistente, Configurações -->
+        <div class="flex justify-between items-center px-2 mt-2">
+            <button class="btn-circle" onclick="sendCommand('Watchlist')" title="Watchlist/Bookmark">
+                <i class="fa-solid fa-bookmark"></i>
+            </button>
+            <button class="btn-circle mic-btn" onclick="sendCommand('Google Assistant')" title="Google Assistant">
+                <!-- Ícone simulado do Google Assistant -->
+                <div class="flex items-center justify-center space-x-1 google-colors">
+                    <span style="background-color: #4285F4;"></span>
+                    <span style="background-color: #EA4335;"></span>
+                    <span style="background-color: #FBBC05;"></span>
+                    <span style="background-color: #34A853;"></span>
+                </div>
+            </button>
+            <button class="btn-circle" onclick="sendCommand('Settings')" title="Configurações">
+                <i class="fa-solid fa-gear"></i>
+            </button>
+        </div>
+
+        <!-- D-Pad -->
+        <div class="d-pad-container mt-4 mb-2">
+            <button class="d-pad-btn d-pad-up" onclick="sendCommand('Up')" title="Cima"><i class="fa-solid fa-chevron-up"></i></button>
+            <button class="d-pad-btn d-pad-right" onclick="sendCommand('Right')" title="Direita"><i class="fa-solid fa-chevron-right"></i></button>
+            <button class="d-pad-btn d-pad-down" onclick="sendCommand('Down')" title="Baixo"><i class="fa-solid fa-chevron-down"></i></button>
+            <button class="d-pad-btn d-pad-left" onclick="sendCommand('Left')" title="Esquerda"><i class="fa-solid fa-chevron-left"></i></button>
+            <button class="d-pad-center" onclick="sendCommand('OK/Enter')" title="OK/Selecionar"></button>
+        </div>
+
+        <!-- Linha 3: Voltar, Home, TV/Input -->
+        <div class="flex justify-between items-center px-2 mt-2">
+            <button class="btn-circle" onclick="sendCommand('Back')" title="Voltar">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <button class="btn-circle" onclick="sendCommand('Home')" title="Início">
+                <i class="fa-solid fa-house"></i>
+            </button>
+            <button class="btn-circle" onclick="sendCommand('TV/Input')" title="TV/Entradas">
+                <i class="fa-solid fa-tv"></i>
+            </button>
+        </div>
+
+        <!-- Linha 4: Inputs/Menu, Volume +/-, Canal +/- -->
+        <div class="flex justify-between px-2 mt-4">
+            <div class="flex flex-col gap-4">
+                <button class="btn-circle" onclick="sendCommand('Source')" title="Fonte/Source">
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                </button>
+                <button class="btn-circle" onclick="sendCommand('Menu')" title="Menu">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+            
+            <div class="btn-pill-vertical">
+                <button onclick="sendCommand('Volume Up')" title="Aumentar Volume"><i class="fa-solid fa-plus"></i></button>
+                <div class="w-full h-px bg-gray-600 opacity-50"></div>
+                <button onclick="sendCommand('Volume Down')" title="Diminuir Volume"><i class="fa-solid fa-minus"></i></button>
+            </div>
+
+            <div class="btn-pill-vertical">
+                <button onclick="sendCommand('Channel Up')" title="Canal Acima"><span class="text-sm font-bold">P+</span></button>
+                <div class="w-full h-px bg-gray-600 opacity-50"></div>
+                <button onclick="sendCommand('Channel Down')" title="Canal Abaixo"><span class="text-sm font-bold">P-</span></button>
+            </div>
+        </div>
+
+        <!-- Linha 5: Botões de cores (simulados como ícones baseados na imagem) -->
+        <div class="flex justify-between items-center px-2 mt-4">
+            <button class="btn-circle" onclick="sendCommand('Layers/Info')" title="Informações/Camadas">
+                <i class="fa-solid fa-layer-group" style="color: #60A5FA;"></i>
+            </button>
+            <button class="btn-circle" onclick="sendCommand('Subtitles/Keyboard')" title="Legendas/Teclado virtual">
+                <i class="fa-solid fa-keyboard" style="color: #fff;"></i>
+                <div class="absolute bottom-2 flex gap-1">
+                    <div class="w-1 h-1 bg-red-500 rounded-full"></div>
+                    <div class="w-1 h-1 bg-green-500 rounded-full"></div>
+                    <div class="w-1 h-1 bg-blue-500 rounded-full"></div>
+                </div>
+            </button>
+            <button class="btn-circle" onclick="sendCommand('Apps/Dashboard')" title="Aplicativos">
+                <i class="fa-solid fa-table-cells-large" style="color: #ef4444;"></i>
+            </button>
+        </div>
+
+        <!-- Botões de Streaming (Usando imagens placeholder/texto formatado) -->
+        <div class="flex flex-col gap-3 mt-4 px-2 mb-2">
+            
+            <button class="streaming-btn" onclick="sendCommand('Netflix')">
+                <span class="text-red-600 font-black text-lg tracking-tighter">NETFLIX</span>
+            </button>
+
+            <button class="streaming-btn" onclick="sendCommand('Prime Video')">
+                <span class="text-blue-900 font-bold text-sm italic">prime video</span>
+            </button>
+
+            <button class="streaming-btn" onclick="sendCommand('Globoplay')">
+                <span class="text-red-500 font-bold text-sm">globoplay</span>
+            </button>
+
+            <button class="streaming-btn" onclick="sendCommand('Disney+')">
+                <span class="text-blue-700 font-bold text-lg" style="font-family: serif;">Disney+</span>
+            </button>
+
+            <button class="streaming-btn" onclick="sendCommand('YouTube')">
+                <span class="text-black font-bold text-sm flex items-center gap-1">
+                    <i class="fa-brands fa-youtube text-red-600 text-lg"></i> YouTube
+                </span>
+            </button>
+
+            <button class="streaming-btn" onclick="sendCommand('TCL Channel')">
+                <span class="text-red-600 font-black text-sm flex flex-col leading-none items-center">
+                    <span>TCL</span>
+                    <span class="text-[8px]">CHANNEL</span>
+                </span>
+            </button>
+
+        </div>
+
+    </div>
+
+    <script>
+        const notification = document.getElementById('notification');
+        const led = document.getElementById('led-indicator');
+        const connectionPanel = document.getElementById('connection-panel');
+        const connectionMessage = document.getElementById('connection-message');
+        const connectionError = document.getElementById('connection-error');
+        const pairingForm = document.getElementById('pairing-form');
+        const pairingPin = document.getElementById('pairing-pin');
+        const pairingSubmit = document.getElementById('pairing-submit');
+        const backendSettings = document.getElementById('backend-settings');
+        const backendUrlInput = document.getElementById('backend-url');
+        const backendSubmit = document.getElementById('backend-submit');
+        const backendStorageKey = 'tcl-remote-backend-url';
+        const isGitHubPages = location.hostname === 'github.io' || location.hostname.endsWith('.github.io');
+
+        function getBackendBaseUrl() {
+            const savedUrl = localStorage.getItem(backendStorageKey);
+            if (savedUrl) {
+                return savedUrl.replace(/\/+$/, '');
+            }
+            return isGitHubPages ? '' : location.origin;
+        }
+
+        function showBackendSettings(message) {
+            connectionPanel.hidden = false;
+            connectionMessage.hidden = false;
+            pairingForm.hidden = true;
+            backendSettings.hidden = false;
+            connectionMessage.textContent = message;
+        }
+
+        backendSettings.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            backendSubmit.disabled = true;
+            connectionError.textContent = '';
+
+            try {
+                const parsedUrl = new URL(backendUrlInput.value.trim());
+                if (parsedUrl.protocol !== 'https:') {
+                    throw new Error('Use o endereço HTTPS do Tailscale Serve.');
+                }
+                localStorage.setItem(backendStorageKey, parsedUrl.origin);
+                await updateConnectionStatus();
+            } catch (error) {
+                connectionError.textContent = error.message;
+            } finally {
+                backendSubmit.disabled = false;
+            }
+        });
+
+        async function updateConnectionStatus() {
+            const backendBaseUrl = getBackendBaseUrl();
+            if (!backendBaseUrl) {
+                showBackendSettings('Para usar pelo GitHub Pages, configure o endereço HTTPS do Tailscale Serve no PC.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${backendBaseUrl}/api/status`);
+                if (!response.ok) {
+                    throw new Error(`Servidor respondeu com status ${response.status}`);
+                }
+
+                const status = await response.json();
+                connectionPanel.hidden = status.remoteReady;
+                backendSettings.hidden = true;
+                pairingForm.hidden = !status.pairingRequired;
+                connectionMessage.hidden = status.pairingRequired;
+                connectionMessage.textContent = status.error
+                    ? `Não foi possível conectar: ${status.error}`
+                    : 'Conectando à TV. Aguarde...';
+
+                if (status.pairingRequired) {
+                    connectionError.textContent = '';
+                }
+            } catch (error) {
+                if (document.activeElement !== backendUrlInput) {
+                    backendUrlInput.value = backendBaseUrl;
+                }
+                showBackendSettings('Não foi possível acessar o servidor. Confirme que Tailscale está conectado no celular e no PC, e que Tailscale Serve está ativo.');
+                connectionError.textContent = `${error.message}. Verifique também se o endereço do servidor está correto.`;
+            }
+        }
+
+        pairingForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            pairingSubmit.disabled = true;
+            connectionError.textContent = '';
+
+            try {
+                const response = await fetch(`${getBackendBaseUrl()}/api/pair-code`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: pairingPin.value.trim() })
+                });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || `Servidor respondeu com status ${response.status}`);
+                }
+
+                pairingForm.hidden = true;
+                connectionMessage.hidden = false;
+                connectionMessage.textContent = result.message;
+                pairingPin.value = '';
+            } catch (error) {
+                connectionError.textContent = error.message;
+            } finally {
+                pairingSubmit.disabled = false;
+                updateConnectionStatus();
+            }
+        });
+
+        updateConnectionStatus();
+        setInterval(updateConnectionStatus, 1000);
+
+        // Função principal para enviar o comando
+        // Em um cenário real, aqui seria feita uma requisição fetch() ou WebSocket para a TV/Servidor
+        async function sendCommand(commandName) {
+            console.log(`Comando acionado: ${commandName}`);
+            
+            piscarLed();
+            mostrarNotificacao(commandName);
+
+            const backendUrl = `${getBackendBaseUrl()}/send-command`;
+            
+            try {
+                const response = await fetch(backendUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ keycode: commandName })
+                });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || `Backend respondeu com status ${response.status}`);
+                }
+
+                mostrarNotificacao(`Enviado: ${commandName}`);
+            } catch (err) {
+                console.error("Erro ao enviar comando:", err);
+                mostrarNotificacao(`Erro: ${err.message}`, true);
+            }
+        }
+
+        function piscarLed() {
+            led.style.backgroundColor = '#ef4444'; // Vermelho brilhante
+            led.style.boxShadow = '0 0 5px #ef4444';
+            
+            setTimeout(() => {
+                led.style.backgroundColor = '#4b5563'; // Volta ao cinza (desligado)
+                led.style.boxShadow = 'none';
+            }, 150);
+        }
+
+        let timeoutId;
+        function mostrarNotificacao(texto, isError = false) {
+            notification.textContent = isError ? texto : `Enviando: ${texto}`;
+            notification.style.backgroundColor = isError ? 'rgba(255, 0, 0, 0.8)' : 'rgba(0, 255, 0, 0.8)';
+            notification.style.opacity = '1';
+            
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                notification.style.opacity = '0';
+            }, 2500); // Aumentei um pouco o tempo para leitura
+        }
+    </script>
+</body>
+</html>
