@@ -10,15 +10,14 @@ O GitHub Pages não executa o backend. Para acessar o backend com segurança sem
 ## Publicar a interface
 
 1. Crie um repositório GitHub para este projeto e envie os arquivos para a branch `main`.
-2. No GitHub, abra **Settings > Pages** e escolha **GitHub Actions** como origem de publicação.
-3. O workflow `.github/workflows/deploy-pages.yml` publica apenas `index.html`.
-4. Aguarde o workflow concluir e anote a origem do site, como `https://usuario.github.io`. Para um domínio personalizado, use a origem configurada para o site.
+2. No GitHub, abra **Settings > Pages**, escolha **Deploy from a branch**, selecione `main` e a pasta `/ (root)`, e salve.
+3. O GitHub Pages publica a partir da branch `main`. Aguarde o primeiro build e acesse `https://operacaoindustria-boop.github.io/controleremotopw/`.
 
 ## Configurar acesso privado ao backend
 
 1. Instale e conecte Tailscale no PC que alcança a TV e no celular. Ambos devem entrar no mesmo tailnet.
 2. Inicie o servidor pela tarefa **Iniciar controle remoto TCL** no VS Code.
-3. Quando solicitado, informe a origem exata do GitHub Pages, sem caminho nem barra final. Deixe vazio para uso local sem o Pages.
+3. Quando solicitado, informe a origem `https://operacaoindustria-boop.github.io`. Deixe vazio para uso local sem o Pages.
 4. Informe o IP local da TV quando a tarefa solicitar. O endereço fica na configuração local da tarefa e não deve ser incluído no repositório público.
 5. No PC, execute `tailscale serve --bg 3000` em um terminal. O Tailscale mostrará um endereço HTTPS do tipo `https://nome-do-pc.nome-da-rede.ts.net`.
 6. No celular, abra o endereço do GitHub Pages, informe o endereço HTTPS do Tailscale Serve e conecte-se.
