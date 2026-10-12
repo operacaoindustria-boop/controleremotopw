@@ -2,38 +2,33 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "Iniciar controle remoto TCL",
+			"label": "Instalar controle remoto em segundo plano",
 			"type": "shell",
-			"command": "node",
+			"command": "powershell.exe",
 			"args": [
-				"server.js"
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\background-server.ps1",
+				"-Install"
 			],
-			"options": {
-				"env": {
-					"REMOTE_UI_ORIGINS": "${input:githubPagesOrigin}"
-				}
-			},
-			"isBackground": true,
-			"problemMatcher": {
-				"owner": "custom",
-				"pattern": {
-					"regexp": "^$",
-					"message": 0
-				},
-				"background": {
-					"activeOnStart": true,
-					"beginsPattern": "Iniciando backend do controle remoto",
-					"endsPattern": "Servidor a correr na porta 3000"
-				}
-			}
+			"problemMatcher": []
+		},
+		{
+			"label": "Remover inicialização automática do controle TCL",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\background-server.ps1",
+				"-Uninstall"
+			],
+			"problemMatcher": []
 		}
 	],
-	"inputs": [
-		{
-			"id": "githubPagesOrigin",
-			"type": "promptString",
-			"description": "Origem do GitHub Pages autorizada a controlar a TV (ex.: https://usuario.github.io). Deixe vazio se ainda nao publicou.",
-			"default": "https://operacaoindustria-boop.github.io"
-		}
-	]
+	"inputs": []
 }
