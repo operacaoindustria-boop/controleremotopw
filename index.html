@@ -909,6 +909,16 @@
             }
         }
 
+        window.handlePhoneVolumeKey = (direction) => {
+            if (!remoteIsConnected) {
+                mostrarNotificacao('TV desconectada', true);
+                return;
+            }
+
+            const commandName = direction === 'up' ? 'Volume Up' : 'Volume Down';
+            sendCommand(commandName);
+        };
+
         function piscarLed() {
             led.style.backgroundColor = '#ef4444'; // Vermelho brilhante
             led.style.boxShadow = '0 0 5px #ef4444';

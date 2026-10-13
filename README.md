@@ -27,6 +27,19 @@ O PC precisa permanecer ligado e com o servidor Node.js ativo. Para acesso pelo 
 
 O servidor continua ativo ao fechar o VS Code, o navegador ou as janelas do terminal. Se o backend falhar, o processo supervisor tenta iniciá-lo novamente. Para manter o controle acessível, a tarefa também desativa a suspensão por inatividade enquanto o PC estiver ligado à tomada; ao entrar na bateria, a configuração existente permanece. A tela ainda pode apagar normalmente. A ação de fechar a tampa não é alterada e ainda pode suspender o PC, dependendo das configurações do Windows. Ao desligar ou reiniciar o PC, o servidor para; ele volta a iniciar quando a conta do Windows entrar. Para remover essa configuração e restaurar o tempo de suspensão anterior na tomada, execute **Remover inicialização automática do controle TCL** nas tarefas do VS Code. Os logs ficam em `%LOCALAPPDATA%\TCLRemote`.
 
+## App Android com botões físicos de volume
+
+O app Android carrega a interface publicada no GitHub Pages e encaminha os botões físicos de volume do celular para a TV. O backend continua no PC; mantenha o Tailscale conectado no celular e no PC.
+
+Para gerar o APK instalável:
+
+1. Envie as alterações para a branch `main` ou execute manualmente o workflow **Build Android APK** em **Actions**.
+2. Abra a execução concluída do workflow e baixe o artefato `tcl-remote-android-debug`.
+3. Extraia `app-debug.apk` e instale-o no celular. Se solicitado, permita a instalação de apps da origem usada para abrir o arquivo.
+4. Abra o app e mantenha o Tailscale conectado. Os botões físicos de volume passam a controlar o volume da TV enquanto o app está aberto.
+
+O APK de depuração é destinado à instalação direta; não precisa ser publicado na Play Store.
+
 ## Desenvolvimento local
 
 Instale as dependências com `npm install` e inicie `node server.js`. A interface também pode ser aberta na origem local indicada no terminal.
